@@ -76,6 +76,21 @@ body.nu #toast{border-radius:999px;background:rgba(20,16,50,.85);-webkit-backdro
 .opts{display:flex;gap:10px}
 .med{color:var(--p);letter-spacing:2px}
 .med i{font-style:normal;color:var(--mut);opacity:.5}
+#ovb{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;pointer-events:auto}
+#ovb:empty{display:none}
+#ovb button{all:unset;cursor:pointer;padding:10px 16px;font-size:14px;font-weight:bold;color:var(--fg)}
+body.retro #ovb button{border:2px solid var(--fg);background:var(--bg);box-shadow:3px 3px 0 var(--a)}
+body.nu #ovb button{border-radius:999px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2)}
+#ovb button.main{color:#05060f;background:var(--p)}
+body.retro #ovb button.main{color:var(--bg);background:var(--p);border-color:var(--p)}
+#ovp:empty{display:none}
+body.nu #ovb button.main{background:linear-gradient(135deg,#ffe066,#ff3d7f);border:0}
+#pad{position:absolute;left:0;right:0;bottom:0;z-index:3;display:flex;gap:6px;padding:6px 8px calc(env(safe-area-inset-bottom) + 8px)}
+#pad button{all:unset;flex:1;height:52px;display:grid;place-items:center;font-size:22px;color:var(--fg);touch-action:none;cursor:pointer}
+body.retro #pad button{border:2px solid var(--fg);background:var(--bg);box-shadow:3px 3px 0 var(--w)}
+body.retro #pad button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 var(--w)}
+body.nu #pad button{border-radius:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+body.nu #pad button:active{background:rgba(79,195,255,.3)}
 #keys{font-size:12px;color:var(--mut);max-width:300px;line-height:1.5}
 body.retro #cv{image-rendering:crisp-edges;image-rendering:pixelated}
 #hud{position:absolute;top:0;left:0;right:0;display:flex;justify-content:space-between;align-items:center;padding:calc(env(safe-area-inset-top) + 10px) 12px 0;pointer-events:none;z-index:3}
@@ -117,7 +132,8 @@ body.retro #flash.go{animation:crt .6s steps(7)}
   <div id="stage">
     <canvas id="cv"></canvas>
     <div id="hud"><button id="back">◀ MENU</button><div id="sc">0</div><div class="rt"><button id="pz" aria-label="Pauze">II</button><button id="ebtn"></button></div></div>
-    <div id="ov"><div id="ovt"></div><div id="ovd"></div><div id="ovs"></div><div id="ovp"></div><div id="keys"></div></div>
+    <div id="ov"><div id="ovt"></div><div id="ovd"></div><div id="ovs"></div><div id="ovp"></div><div id="ovb"></div><div id="keys"></div></div>
+    <div id="pad" class="hidden"><button data-k="ArrowLeft" data-r="1" aria-label="Links">◀</button><button data-k="ArrowUp" aria-label="Draaien">⟳</button><button data-k="ArrowDown" data-r="1" aria-label="Omlaag">▼</button><button data-k=" " aria-label="Laten vallen">⤓</button><button data-k="ArrowRight" data-r="1" aria-label="Rechts">▶</button></div>
     <div id="toast"></div>
   </div>
 </div>
@@ -801,7 +817,41 @@ G.blokval={
     this.score=0;this.lines=0;this.cleared=0;this.level=1;this.t=0;this.pid=0;this.chain=0;this.combo=0;this.bag=[];
     this.anim=null;this.trail=null;this.pops=[];this.ban=null;this.fl=0;pops=[];this.nx=this.make();this.spawn();
   },
-  layout(){this.cs=Math.min(156/this.NC,(H-64)/this.NR);this.x0=6;this.y0=Math.max(40,(H-this.cs*this.NR)/2+8)},
+  // Grote knoppen onderin: aan/uit per apparaat (standaard aan op touchscreens). Het bord maakt dan ruimte.
+  padOn(){return store.get('tm_bv_pad',finePointer?'0':'1')==='1'},
+  layout(){const res=this.padOn()?34:0;this.cs=Math.min(156/this.NC,(H-64-res)/this.NR);this.x0=6;this.y0=Math.max(40,(H-res-this.cs*this.NR)/2+8)},
+  // Statistieken over alle potjes heen.
+  stats(){try{return JSON.parse(store.get('tm_bv_stats','{}'))||{}}catch(e){return{}}},
+  stat(k,v,isMax){const st=this.stats();st[k]=isMax?Math.max(st[k]||0,v):(st[k]||0)+v;store.set('tm_bv_stats',JSON.stringify(st))},
+  // Lopend potje bewaren, zodat je na het sluiten van de app verder kunt.
+  save(){
+    if(!this.cur)return;
+    store.set('tm_bv_save',JSON.stringify({g:this.g,score:this.score,lines:this.lines,cleared:this.cleared,level:this.level,combo:this.combo,nx:this.nx,cur:this.cur,bag:this.bag}));
+    if(this.pt>0){this.stat('time',this.pt);this.pt=0}
+  },
+  onOpen(){try{const v=store.get('tm_bv_save','');this.saved=v?JSON.parse(v):null}catch(e){this.saved=null}},
+  onPause(){this.save()},
+  onOver(){store.set('tm_bv_save','');this.saved=null;this.stat('games',1);this.stat('time',this.pt||0);this.pt=0},
+  restore(){
+    const v=this.saved;this.saved=null;if(!v)return;
+    Object.assign(this,{g:v.g,score:v.score,lines:v.lines,cleared:v.cleared,level:v.level,combo:v.combo,nx:v.nx,cur:v.cur,bag:v.bag||[]});
+    this.anim=null;this.trail=null;this.pops=[];this.ban=null;this.t=0;this.pid++;pops=[];
+    if(!this.cur)this.check();
+  },
+  ovButtons(st){
+    const b=[];
+    if(st==='ready'&&this.saved){
+      b.push({t:(R()?'▶ VERDER':'▶ Verder spelen')+' ('+this.saved.score+')',main:1,fn:()=>{this.restore();startRun()}});
+      b.push({t:u('Nieuw potje'),fn:()=>{store.set('tm_bv_save','');this.saved=null;startRun()}});
+    }
+    if(st!=='run')b.push({t:u('Knoppen: ')+u(this.padOn()?'aan':'uit'),fn:()=>{store.set('tm_bv_pad',this.padOn()?'0':'1');this.layout();updatePad();showOv()}});
+    return b;
+  },
+  extra(st){
+    if(st==='pause')return '';
+    const x=this.stats(),tm=Math.round((x.time||0)/60),h=Math.floor(tm/60);
+    return '<br><small>'+u('Potjes')+' '+(x.games||0)+' · '+u('Rijen')+' '+(x.rows||0)+' · '+u('Beste ketting')+' x'+(x.chain||0)+' · '+u('Beste combo')+' x'+(x.combo||0)+' · '+u('Bommen')+' '+(x.bombs||0)+' · '+u('Speeltijd')+' '+(h?h+(R()?'U ':'u '):'')+(tm%60)+'m</small>';
+  },
   resized(){this.layout()},
   make(){
     if(this.level>=2&&Math.random()<.04)return{cells:[{x:0,y:0,c:this.BOMB}],bomb:1};
@@ -812,7 +862,8 @@ G.blokval={
   spawn(){
     const p=this.nx;this.cur={x:3,y:0,cells:p.cells,bomb:p.bomb,sq:p.sq};this.cur.y=-Math.max(...this.cur.cells.map(c=>c.y));
     this.nx=this.make();this.t=0;this.pid++;
-    if(this.hit(this.cur.x,this.cur.y,this.cur.cells)){this.cur=null;over()}
+    if(this.hit(this.cur.x,this.cur.y,this.cur.cells)){this.cur=null;return over()}
+    if(state==='run')this.save();
   },
   hit(px,py,cells){
     for(const c of cells){const x=px+c.x,y=py+c.y;if(x<0||x>=this.NC||y>=this.NR)return true;if(y>=0&&this.g[y][x]>=0)return true}
@@ -840,7 +891,7 @@ G.blokval={
       this.cur=null;const by=Math.max(0,y),m=[];
       for(let yy=by-1;yy<=by+1;yy++)for(let xx=x-1;xx<=x+1;xx++)if(yy>=0&&yy<this.NR&&xx>=0&&xx<this.NC&&this.g[yy][xx]>=0)m.push(yy*this.NC+xx);
       const cx=this.x0+(x+.5)*this.cs,cy=this.y0+(by+.5)*this.cs;
-      burst(cx,cy,'e',40,140);burst(cx,cy,'p',20,100);shake(10);buzz(90);tone(90,.5,40,.2);this.fl=.35;
+      this.stat('bombs',1);burst(cx,cy,'e',40,140);burst(cx,cy,'p',20,100);shake(10);buzz(90);tone(90,.5,40,.2);this.fl=.35;
       this.score+=m.length*20;popT(u('Boem!')+' +'+m.length*20,cx,cy-10,'e',10);
       this.chain=0;if(m.length){this.anim={m,t:.2};this.chain=1}else this.check();
       return;
@@ -871,14 +922,14 @@ G.blokval={
     const mid=this.x0+C*cs/2;
     if(!m.size){
       this.anim=null;
-      if(this.chain>0){this.combo++;if(this.combo>1){const b=this.combo*50;this.score+=b;this.pop('COMBO x'+this.combo+'  +'+b,mid,this.y0+80,'a',8)}}
+      if(this.chain>0){this.combo++;this.stat('combo',this.combo,1);if(this.combo>1){const b=this.combo*50;this.score+=b;this.pop('COMBO x'+this.combo+'  +'+b,mid,this.y0+80,'a',8)}}
       else this.combo=0;
       const lv=1+Math.floor(this.cleared/30);
       if(lv>this.level){this.level=lv;this.ban={t:'LEVEL '+lv,sub:R()?'SNELLER!':'sneller!',l:1.8};tone(880,.25,1280,.08);this.fl=.3}
       if(this.g.every(r=>r.every(v=>v<0))&&this.lines+this.cleared>0){this.score+=500;this.ban={t:R()?'LEEG BORD!':'Leeg bord!',sub:'+500',l:2}}
       this.chain=0;return this.spawn();
     }
-    this.chain++;const pts=(rows*rows*100+gc*15)*this.chain;this.score+=pts;this.lines+=rows;this.cleared+=m.size;
+    this.chain++;this.stat('chain',this.chain,1);if(rows)this.stat('rows',rows);const pts=(rows*rows*100+gc*15)*this.chain;this.score+=pts;this.lines+=rows;this.cleared+=m.size;
     let sx=0,sy=0;for(const k of m){sx+=k%C;sy+=k/C|0}sx/=m.size;sy/=m.size;
     this.pop('+'+pts,this.x0+(sx+.5)*cs,this.y0+(sy+.5)*cs,'p',9);
     if(this.chain>1){this.pop((R()?'KETTING x':'Ketting ×')+this.chain,mid,this.y0+sy*cs-8,'w',10);buzz(30)}
@@ -888,7 +939,7 @@ G.blokval={
     this.anim={m:[...m],t:.3};
   },
   update(dt){
-    this.fl=Math.max(0,this.fl-dt*2);
+    this.pt=(this.pt||0)+dt;this.fl=Math.max(0,this.fl-dt*2);
     for(const p of this.pops){p.y-=18*dt;p.l-=dt}this.pops=this.pops.filter(p=>p.l>0);
     if(this.ban&&(this.ban.l-=dt)<=0)this.ban=null;
     if(this.trail&&(this.trail.l-=dt)<=0)this.trail=null;
@@ -1307,23 +1358,41 @@ function showOv(){
     $('ovs').innerHTML=u('Score')+': '+g.score+'<br>'+u('Record')+' '+(R()?'1986':'2026')+': '+b+(g.rec?'<br><b style="color:var(--p)">★ '+u('Nieuw record!')+' ★</b>':'');
     $('ovp').textContent=R()?'OPNIEUW?':'Nog een keer';
   }
+  if(g.extra)$('ovs').innerHTML+=g.extra(state);
+  if(state==='ready'&&g.saved)$('ovp').textContent='';
+  const ob=$('ovb');ob.innerHTML='';
+  for(const b of g.ovButtons?g.ovButtons(state):[]){const el=document.createElement('button');el.textContent=b.t;if(b.main)el.className='main';
+    el.addEventListener('click',e=>{e.stopPropagation();au();b.fn()});ob.appendChild(el)}
 }
+// Grote schermknoppen (alleen voor spellen met padOn): ingedrukt houden herhaalt schuiven/omlaag.
+function updatePad(){$('pad').classList.toggle('hidden',!(cur&&cur.padOn&&cur.padOn()))}
+let padT=0;
+function padStop(){clearTimeout(padT);clearInterval(padT);padT=0}
+$('pad').addEventListener('pointerdown',e=>{
+  const b=e.target.closest('button');if(!b)return;e.preventDefault();au();
+  if(state!=='run'){press(W/2,H/2);return}
+  if(freeze>0||!cur.key)return;cur.key(b.dataset.k);buzz(8);padStop();
+  if(b.dataset.r)padT=setTimeout(()=>{padT=setInterval(()=>{if(state==='run')cur.key(b.dataset.k)},70)},220);
+});
+for(const ev of ['pointerup','pointercancel','pointerleave'])$('pad').addEventListener(ev,padStop);
+function startRun(){state='run';$('ov').classList.add('hidden');lastSc=-1;Music.play(cur.song)}
 function openGame(id){
-  au();curId=id;cur=G[id];parts=[];
+  au();curId=id;cur=G[id];parts=[];if(cur.onOpen)cur.onOpen();
   $('menu').classList.add('hidden');$('play').classList.remove('hidden');
   resize();cur.init();state='ready';lastSc=-1;
-  $('ebtn').textContent='⏱ '+(R()?'2026':'1986');showOv();
+  $('ebtn').textContent='⏱ '+(R()?'2026':'1986');updatePad();showOv();
 }
 function over(){
   if(state==='over')return;
-  state='over';overT=performance.now();Music.stop();SFX.die();
+  state='over';overT=performance.now();Music.stop();SFX.die();padStop();if(cur.onOver)cur.onOver();
   const k='tm_'+curId+'_'+era;cur.rec=cur.score>best(curId);if(cur.rec)store.set(k,cur.score);
   setTimeout(()=>{if(state==='over')showOv()},450);
 }
-function pause(){if(state!=='run')return;state='pause';pd=null;if(hold&&cur.up)cur.up();hold=0;Music.stop();showOv()}
-function toMenu(){Music.stop();state='menu';cur=null;$('play').classList.add('hidden');$('menu').classList.remove('hidden');renderMenu()}
+function pause(){if(state!=='run')return;state='pause';padStop();if(cur.onPause)cur.onPause();pd=null;if(hold&&cur.up)cur.up();hold=0;Music.stop();showOv()}
+function toMenu(){Music.stop();padStop();if(cur&&(state==='run'||state==='pause')&&cur.onPause)cur.onPause();state='menu';cur=null;updatePad();$('play').classList.add('hidden');$('menu').classList.remove('hidden');renderMenu()}
 function press(x,y){
   au();
+  if(state==='ready'&&cur.saved)return;
   if(state==='ready'||state==='pause'){state='run';$('ov').classList.add('hidden');Music.play(cur.song);return}
   if(state==='over'){if(performance.now()-overT>700){parts=[];cur.init();cur.rec=false;state='run';lastSc=-1;Music.play(cur.song);$('ov').classList.add('hidden')}return}
   if(state==='run'&&freeze<=0)cur.tap(x,y);
